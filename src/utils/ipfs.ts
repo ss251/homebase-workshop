@@ -32,7 +32,7 @@ export async function generateZoraMetadata(
   return {
     name,
     symbol,
-    description: description || `${name} - Created with Zoiner on Farcaster`,
+    description: description || `${name} - Created with @zoiner on Farcaster`,
     image: imageUrl,
     properties: {
       category: "social"

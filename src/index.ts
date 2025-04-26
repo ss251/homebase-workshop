@@ -75,7 +75,7 @@ app.get('/metadata', (req, res) => {
   // Generate metadata with the parameters or fall back to defaults
   const metadata = {
     name: name || "Zoiner Workshop Token",
-    description: (name || "Zoiner Workshop Token") + " - Created with Zoiner on Farcaster",
+    description: (name || "Zoiner Workshop Token") + " - Created with @zoiner on Farcaster",
     symbol: symbol || "ZOINER",
     image: image || "https://i.postimg.cc/VkgLgc4Z/happybirthday.png",
     properties: {
