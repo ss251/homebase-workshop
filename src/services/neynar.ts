@@ -107,12 +107,22 @@ export class NeynarService {
    */
   async replyToCast(parentFid: number, parentHash: string, text: string): Promise<string | null> {
     try {
-      // Using publishCast with correct parameters
+      // Extract URLs from the text to use in embeds
+      const urlMatch = text.match(/(https?:\/\/[^\s]+)/g);
+      const urls = urlMatch ? [...new Set(urlMatch)] : []; // Remove duplicates
+      
+      console.log(`Found URLs to embed: ${urls.join(', ')}`);
+      
+      // Create embeds array if URLs are found
+      const embeds = urls.map(url => ({ url }));
+      
+      // Using publishCast with URLs as embeds
       const response = await this.client.publishCast({
-        text,
+        text: text,
         parent: parentHash,
         parentAuthorFid: parentFid,
-        signerUuid: this.signerUuid
+        signerUuid: this.signerUuid,
+        embeds: embeds.length > 0 ? embeds : undefined
       });
       
       // Use cast hash from the response if available

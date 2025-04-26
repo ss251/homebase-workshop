@@ -260,9 +260,8 @@ export class BotService {
       const zoraUrl = this.zoraService.generateZoraUrl(result.address, coinRequest.creatorAddress);
       console.log(`✅ Generated Zora URL: ${zoraUrl}`);
       
-      // Create success message
-      const successMessage = `your creation is zoined!\n\n` +
-        `${zoraUrl}\n\n`
+      // Create success message - put URL on its own line for better embedding
+      const successMessage = `your creation is zoined!\n\n${zoraUrl}`;
       
       // Send a reply with the result
       if (!DRY_RUN) {
