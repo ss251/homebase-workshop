@@ -46,36 +46,54 @@ export class NeynarService {
   }
   
   /**
-   * Get full cast details
-   * @param hash The cast hash
-   * @returns Cast details or null if not found
+   * Get the full details of a cast by its hash
+   * @param hash The hash of the cast to fetch
+   * @returns A FarcasterCast object or null if not found
    */
   async getCastByHash(hash: string): Promise<FarcasterCast | null> {
     try {
-      // Using fetchBulkCasts with a single hash
-      console.log('DEBUG - Fetching cast by hash:', hash);
-      const response = await this.client.fetchBulkCasts({ casts: [hash] });
-      console.log('DEBUG - Cast API response:', JSON.stringify(response, null, 2));
+      console.log(`DEBUG - Fetching cast by hash: ${hash}`);
       
-      if (!response || !response.result || response.result.casts.length === 0) {
-        console.log('DEBUG - No cast found for hash:', hash);
+      const response = await this.client.fetchBulkCasts({ casts: [hash] });
+      
+      if (!response?.result?.casts?.[0]) {
+        console.warn(`Failed to fetch cast with hash ${hash}`);
         return null;
       }
       
-      const formattedCast = this.formatCast(response.result.casts[0]);
-      console.log('DEBUG - Formatted cast:', JSON.stringify({
+      const rawCast = response.result.casts[0];
+      
+      // Only log minimal cast details to avoid excessive logging
+      console.log('DEBUG - Received cast:', {
+        hash: rawCast.hash,
+        author_fid: rawCast.author.fid,
+        text_length: rawCast.text.length,
+        has_embeds: Boolean(rawCast.embeds?.length),
+        embeds_count: rawCast.embeds?.length || 0
+      });
+      
+      // Log image-related fields to help with debugging image extraction
+      if (rawCast.embeds?.length) {
+        console.log('CAST IMAGE RELATED FIELDS:', {
+          embedsData: rawCast.embeds
+        });
+      }
+      
+      // Format the cast to our internal format
+      const formattedCast = this.formatCast(rawCast);
+      console.log('DEBUG - Formatted cast:', {
         hash: formattedCast.hash,
         text: formattedCast.text,
-        has_embedded_media: !!formattedCast.embedded_media,
+        has_embedded_media: Boolean(formattedCast.embedded_media?.length),
         embedded_media_count: formattedCast.embedded_media?.length || 0,
-        has_embeds: !!formattedCast.embeds,
+        has_embeds: Boolean(formattedCast.embeds?.length),
         embeds_count: formattedCast.embeds?.length || 0,
         author_fid: formattedCast.author.fid
-      }));
+      });
       
       return formattedCast;
     } catch (error) {
-      console.error('Error getting cast details:', error);
+      console.error(`Error fetching cast ${hash}:`, error);
       return null;
     }
   }

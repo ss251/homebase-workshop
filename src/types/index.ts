@@ -43,6 +43,23 @@ export interface FarcasterUser {
   profile?: any;
 }
 
+// Types for Zora metadata (EIP-7572 standard)
+export interface ZoraMetadata {
+  name: string;
+  description: string;
+  symbol?: string;
+  image: string;
+  animation_url?: string;
+  content?: {
+    uri: string;
+    mime: string;
+  };
+  properties: {
+    category: string;
+    [key: string]: any;
+  };
+}
+
 // Types for Zora coin creation
 export interface CoinCreationParams {
   name: string;

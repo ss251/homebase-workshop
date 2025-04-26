@@ -20,6 +20,8 @@ console.log('NEYNAR_API_KEY:', process.env.NEYNAR_API_KEY ? '[REDACTED]' : 'NOT 
 console.log('SIGNER_UUID:', process.env.SIGNER_UUID ? '[PRESENT]' : 'NOT SET');
 console.log('BOT_FID:', process.env.BOT_FID);
 console.log('BOT_NAME:', process.env.BOT_NAME);
+console.log('PINATA_JWT:', process.env.PINATA_JWT ? '[PRESENT]' : 'NOT SET');
+console.log('GATEWAY_URL:', process.env.GATEWAY_URL || 'tan-obvious-puffin-912.mypinata.cloud (default)');
 
 // Set up wallet for Zora interactions
 const walletPrivateKey = process.env.WALLET_PRIVATE_KEY;
@@ -66,16 +68,24 @@ const rootHandler = (_req: any, res: any) => {
 };
 
 // Metadata endpoint for Zora
-app.get('/metadata', (_req: any, res: any) => {
-  // This endpoint serves valid Zora metadata for the workshop
-  res.json({
-    name: "Zoiner Workshop Token",
-    description: "Token created during the Zoiner bot workshop on Farcaster",
-    image: "https://i.postimg.cc/VkgLgc4Z/happybirthday.png",
+app.get('/metadata', (req, res) => {
+  // Get the metadata values from query parameters or use defaults
+  const { name, symbol, image } = req.query;
+  
+  // Generate metadata with the parameters or fall back to defaults
+  const metadata = {
+    name: name || "Zoiner Workshop Token",
+    description: (name || "Zoiner Workshop Token") + " - Created with Zoiner on Farcaster",
+    symbol: symbol || "ZOINER",
+    image: image || "https://i.postimg.cc/VkgLgc4Z/happybirthday.png",
     properties: {
       category: "social"
     }
-  });
+  };
+  
+  // Set the content type to application/json
+  res.setHeader('Content-Type', 'application/json');
+  res.json(metadata);
 });
 
 // Webhook verification endpoint handler
@@ -88,32 +98,35 @@ const webhookGetHandler = (req: any, res: any) => {
 };
 
 // Webhook endpoint handler
-const webhookPostHandler = async (req: any, res: any) => {
+app.post('/webhook', async (req, res) => {
+  console.log('Received webhook event:', req.body.type);
+  
   try {
+    // Validate the event
     const event = req.body as WebhookEvent;
     
-    // Always respond with 200 quickly to acknowledge receipt
-    res.status(200).send('OK');
-    
-    // Process the event asynchronously
+    // Only process cast.created events
     if (event.type === 'cast.created') {
-      console.log(`Received cast.created event for cast ${event.data.hash}`);
+      const castHash = event.data.hash;
+      console.log(`Received cast.created event for cast ${castHash}`);
       
-      // Process the cast
-      await botService.processCast(event.data.hash);
-    } else {
-      console.log(`Ignoring event of type: ${event.type}`);
+      // Process the cast asynchronously to not block the webhook response
+      botService.processCast(castHash).catch(err => {
+        console.error(`Error processing cast ${castHash}:`, err);
+      });
     }
+    
+    // Always return 200 OK for webhook events
+    res.status(200).json({ status: 'ok' });
   } catch (error) {
-    console.error('Error processing webhook event:', error);
-    // No need to send error response, we already sent 200
+    console.error('Error handling webhook event:', error);
+    res.status(500).json({ status: 'error', message: 'Internal server error' });
   }
-};
+});
 
 // Setup routes
 app.get('/', rootHandler);
 app.get('/webhook', webhookGetHandler);
-app.post('/webhook', webhookPostHandler);
 
 // Start the server
 const PORT = process.env.PORT || 3000;

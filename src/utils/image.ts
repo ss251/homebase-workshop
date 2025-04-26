@@ -1,120 +1,130 @@
 import axios from 'axios';
 import { FarcasterCast } from '../types/index.js';
-
-// Default image to use when no image is found in the cast
-const DEFAULT_IMAGE_URL = 'https://i.postimg.cc/VkgLgc4Z/happybirthday.png';
+import { uploadImageUrlToIPFS } from './ipfs.js';
 
 /**
  * Extract image URL from a Farcaster cast
  * @param cast The Farcaster cast object
- * @returns The first valid image URL found or the default image URL
+ * @returns The best image URL found, or null if none
  */
-export async function extractImageFromCast(cast: FarcasterCast): Promise<string> {
-  console.log('DEBUG - Attempting to extract image from cast:', cast.hash);
-  console.log('DEBUG - Cast data for image extraction:', JSON.stringify(cast, null, 2));
+export async function extractImageFromCast(cast: FarcasterCast): Promise<string | null> {
+  console.log(`Extracting image from cast ${cast.hash}`);
   
-  // Check for already extracted image URLs
-  if (cast.image_urls && cast.image_urls.length > 0) {
-    console.log('DEBUG - Found image_urls:', cast.image_urls);
-    for (const imageUrl of cast.image_urls) {
-      if (await verifyImageUrl(imageUrl)) {
-        console.log('DEBUG - Verified image URL from image_urls:', imageUrl);
-        return imageUrl;
+  // Debug log the entire cast structure
+  console.log('CAST STRUCTURE:', JSON.stringify({
+    has_embeds: Boolean(cast.embeds?.length),
+    embeds_count: cast.embeds?.length || 0,
+    embedded_media_count: cast.embedded_media?.length || 0,
+    image_urls_count: cast.image_urls?.length || 0,
+    images_count: cast.images?.length || 0
+  }));
+  
+  // Log specific image-related fields
+  if (cast.embeds && cast.embeds.length > 0) {
+    console.log(`Found ${cast.embeds.length} embeds:`, JSON.stringify(cast.embeds, null, 2));
+  }
+  
+  let imageUrl: string | null = null;
+  
+  // Check embeds first (this is the most common format in the new API)
+  if (cast.embeds && cast.embeds.length > 0) {
+    for (const embed of cast.embeds) {
+      console.log(`Checking embed:`, JSON.stringify(embed));
+      
+      // Check if embed has an image URL
+      if (embed.url) {
+        // Check if metadata identifies this as an image
+        if (embed.mimetype?.startsWith('image/')) {
+          console.log(`Found image in embed with mimetype: ${embed.mimetype}`);
+          return embed.url; // Return directly as this is the most reliable image source
+        }
+        
+        // No metadata or content type? Check the URL directly
+        if (isLikelyImageUrl(embed.url)) {
+          console.log(`Found likely image URL in embed: ${embed.url}`);
+          return embed.url;
+        }
+      }
+      
+      // Check if embed has explicit image property
+      if (embed.image) {
+        console.log(`Found image directly in embed.image: ${embed.image}`);
+        return embed.image;
       }
     }
   }
-
-  // Check embedded media (embedsMedia in API response)
+  
+  // Check embedded media (older format)
   if (cast.embedded_media && cast.embedded_media.length > 0) {
-    console.log('DEBUG - Found embedded_media:', JSON.stringify(cast.embedded_media));
+    console.log(`Found ${cast.embedded_media.length} embedded_media items`);
+    
     for (const media of cast.embedded_media) {
-      if (
-        media.url && 
-        (media.url.endsWith('.jpg') || 
-         media.url.endsWith('.jpeg') || 
-         media.url.endsWith('.png') || 
-         media.url.endsWith('.gif') ||
-         (media.type && media.type.startsWith('image/')))
-      ) {
-        console.log('DEBUG - Found potential image in embedded_media:', media.url);
-        if (await verifyImageUrl(media.url)) {
-          console.log('DEBUG - Verified image URL from embedded_media:', media.url);
+      if (media.url) {
+        if (media.type?.startsWith('image/')) {
+          console.log(`Found image in embedded_media with type: ${media.type}`);
+          return media.url;
+        }
+        
+        if (isLikelyImageUrl(media.url)) {
+          console.log(`Found likely image URL in embedded_media: ${media.url}`);
           return media.url;
         }
       }
     }
   }
-
-  // Check embeds
-  if (cast.embeds && cast.embeds.length > 0) {
-    console.log('DEBUG - Found embeds:', JSON.stringify(cast.embeds));
-    for (const embed of cast.embeds) {
-      if (embed.image) {
-        console.log('DEBUG - Found image directly in embed.image:', embed.image);
-        if (await verifyImageUrl(embed.image)) {
-          console.log('DEBUG - Verified image URL from embed.image:', embed.image);
-          return embed.image;
-        }
-      }
-      
-      if (
-        embed.url && 
-        (embed.url.endsWith('.jpg') || 
-         embed.url.endsWith('.jpeg') || 
-         embed.url.endsWith('.png') || 
-         embed.url.endsWith('.gif') ||
-         (embed.mimetype && embed.mimetype.startsWith('image/')))
-      ) {
-        console.log('DEBUG - Found potential image in embeds.url:', embed.url);
-        if (await verifyImageUrl(embed.url)) {
-          console.log('DEBUG - Verified image URL from embeds.url:', embed.url);
-          return embed.url;
-        }
-      }
-    }
+  
+  // Check image_urls array (sometimes provided directly)
+  if (cast.image_urls && cast.image_urls.length > 0) {
+    console.log(`Found ${cast.image_urls.length} image_urls`);
+    return cast.image_urls[0]; // Just use the first one
   }
   
-  // Direct attachments field if available
-  if (cast.attachments && Array.isArray(cast.attachments)) {
-    console.log('DEBUG - Found attachments field:', JSON.stringify(cast.attachments));
-    for (const attachment of cast.attachments) {
-      if (typeof attachment === 'string') {
-        // If it's directly a string URL
-        if (await verifyImageUrl(attachment)) {
-          console.log('DEBUG - Verified image URL from attachments (string):', attachment);
-          return attachment;
-        }
-      } else if (attachment.url) {
-        // If it's an object with a URL
-        if (await verifyImageUrl(attachment.url)) {
-          console.log('DEBUG - Verified image URL from attachments.url:', attachment.url);
-          return attachment.url;
-        }
-      }
-    }
+  // Check images array (sometimes provided directly)
+  if (cast.images && cast.images.length > 0) {
+    console.log(`Found ${cast.images.length} images`);
+    return cast.images[0]; // Just use the first one
   }
+  
+  // If we reach here, no image was found
+  console.warn('No valid image found in the cast');
+  return null;
+}
 
-  // No image found, use default image
-  console.log('DEBUG - No valid image found in cast, using default image:', DEFAULT_IMAGE_URL);
-  return DEFAULT_IMAGE_URL;
+
+/**
+ * Determine if a URL is likely to be an image based on extension
+ * @param url URL to check
+ * @returns True if the URL is likely an image
+ */
+function isLikelyImageUrl(url: string): boolean {
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+  const lowercaseUrl = url.toLowerCase();
+  
+  return imageExtensions.some(ext => lowercaseUrl.endsWith(ext) || lowercaseUrl.includes('image'));
 }
 
 /**
- * Verify if a URL points to a valid image
- * @param url The URL to verify
- * @returns True if the URL points to a valid image
+ * Upload an image to IPFS via Pinata
+ * @param imageUrl The URL of the image to upload
+ * @returns The IPFS URI of the uploaded image or the original URL if upload fails
  */
-async function verifyImageUrl(url: string): Promise<boolean> {
+async function uploadImageToIPFS(imageUrl: string): Promise<string> {
   try {
-    console.log('DEBUG - Verifying image URL:', url);
-    const response = await axios.head(url);
-    const contentType = response.headers['content-type'];
-    const isImage = contentType && contentType.startsWith('image/');
-    console.log('DEBUG - Image verification result:', { url, contentType, isImage });
-    return isImage;
-  } catch (error) {
-    console.error('Error verifying image URL:', url, error);
-    return false;
+    console.log(`Uploading image to IPFS: ${imageUrl}`);
+    
+    // If we're in dry run mode, just return the original URL
+    if (process.env.DRY_RUN === 'true') {
+      console.log('🏜️ DRY RUN: Skipping IPFS upload, returning original URL');
+      return imageUrl;
+    }
+    
+    // Use the shared uploadImageUrlToIPFS function from ipfs.ts
+    return await uploadImageUrlToIPFS(imageUrl);
+    
+  } catch (error: any) {
+    console.error('Error handling image:', error);
+    console.log('Falling back to original image URL');
+    return imageUrl;
   }
 }
 
@@ -124,7 +134,11 @@ async function verifyImageUrl(url: string): Promise<boolean> {
  * @returns Promise resolving to the processed image URL (as-is for now)
  */
 export async function prepareImageForZora(imageUrl: string): Promise<string> {
-  // For now we just return the URL directly
-  // In a production system, you'd likely want to upload to IPFS or handle differently
-  return imageUrl;
+  // Try to upload to IPFS first
+  try {
+    return await uploadImageToIPFS(imageUrl);
+  } catch (error) {
+    console.warn('Failed to upload to IPFS, using original URL');
+    return imageUrl;
+  }
 } 
