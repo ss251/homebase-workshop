@@ -252,7 +252,7 @@ export class ZoraService {
    * @returns URL to view the coin on Zora
    */
   generateZoraUrl(contractAddress: string, referrerAddress?: string): string {
-    const baseUrl = `https://zora.co/coin/base:${contractAddress}`;
+    const baseUrl = `https://zora.co/api/og-image/coin/base:${contractAddress}`;
     return referrerAddress ? `${baseUrl}?referrer=${referrerAddress}` : baseUrl;
   }
 } 
